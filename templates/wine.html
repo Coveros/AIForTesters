@@ -48,9 +48,32 @@
   grid-template-columns: repeat(2, 1fr);  /* Define two equal columns */
   gap: 10px;  /* Add some space between elements */
   }
+
+  .right-container {
+    float: right;
+  }
   </style>
 </head>
+<nav class="navbar navbar-expand-lg navbar-light bg-light">
+  <div class="nav-container" id="navbarNav">
+    <ul class="navbar-nav">
+      <li class="nav-item active">
+        <a class="nav-link" href="/">Home</a>
+      </li>
+      <li class="nav-item active">
+        <a class="nav-link" href="{{ url_for('about') }}">About</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('profile') }}">Profile</a>
+      </li>
+      <li class="nav-item" style="float: right;">
+        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </li>
+    </ul>
+  </div>
+</nav>
 <body>
+  <br>
   <h1>Predict Your Wine Variety</h1>
   <br><br>
   <form action="/predict" method="post">
@@ -115,3 +138,8 @@
   
 </body>
 </html>
+
+<footer class="text-center mt-4">
+  <p>For any inquiries, please <a href="contact.html">Contact Us</a>.</p>
+  <p>Notice: This is a sample application for educational purposes only.</p>
+</footer>
