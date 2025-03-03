@@ -9,8 +9,9 @@
 # navigating to the appropriate URL in a web browser.
 
 from flask import Flask, render_template, request, redirect, url_for, session
-from flask_mysqldb import MySQL
-import MySQLdb.cursors
+#from flask_mysqldb import MySQL
+#import MySQLdb.cursors
+import sqlite3
 import pickle
 import signal
 import re
@@ -27,13 +28,13 @@ app = Flask(__name__)
 model = pickle.load(open('model.pkl', 'rb'))
 app.secret_key = 'your_secret_key'
 
-# Configure MySQL service
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = 'MySQL@#1234'
-app.config['MYSQL_DB'] = 'wineruserdb'
+# # Configure MySQL service
+# app.config['MYSQL_HOST'] = 'localhost'
+# app.config['MYSQL_USER'] = 'root'
+# app.config['MYSQL_PASSWORD'] = 'MySQL@#1234'
+# app.config['MYSQL_DB'] = 'wineruserdb'
 
-mysql = MySQL(app)
+# mysql = MySQL(app)
 
 # Turn debugging mode off for production
 app.debug = True 
@@ -57,19 +58,22 @@ def login():
     if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
         username = request.form['username']
         password = request.form['password']
-#        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor = mysql.connection.cursor()
-        cursor.execute('SELECT * FROM accounts WHERE username = %s AND password = %s', (username, password))
-        account = cursor.fetchone()
-        if account:
-            session['loggedin'] = True
-            session['id'] = account[0]
-            session['username'] = account[1]
-            session['email'] = account[3]
-            msg = 'Logged in successfully!'
-            return render_template('wine.html', prediction_text = msg)
+        cursor = sqlite3.connect('wineusers.db').cursor()
+        if cursor:
+            cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (username, password))
+            account = cursor.fetchone()
+            cursor.close()
+            if account:
+                session['loggedin'] = True
+                session['id'] = account[0]
+                session['username'] = account[1]
+                session['email'] = account[3]
+                msg = 'Logged in successfully!'
+                return render_template('wine.html', prediction_text = msg)
+            else:
+                msg = 'Incorrect username/password!'
         else:
-            msg = 'Incorrect username/password!'
+            msg = 'Database connection error!'
 
     return render_template('login.html', login_text='Incorrect username/password!')
 
@@ -98,9 +102,12 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
-        cursor = mysql.connection.cursor()
-        cursor.execute('SELECT * FROM accounts WHERE username = % s', (username, ))
+        cursor = sqlite3.connect('wineusers.db').cursor()
+        cursor.execute('SELECT * FROM accounts WHERE username = ?', (username, ))
         account = cursor.fetchone()
+        # cursor = mysql.connection.cursor()
+        # cursor.execute('SELECT * FROM accounts WHERE username = % s', (username, ))
+        # account = cursor.fetchone()
         if account:
             msg = 'Account already exists!'
         elif not re.match(r'[^@]+@[^@]+\.[^@]+', email):
@@ -110,8 +117,11 @@ def register():
         elif not username or not password or not email:
             msg = 'Please fill out the form!'
         else:
-            cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
-            mysql.connection.commit()
+            cursor.execute('INSERT INTO accounts VALUES (NULL, ?, ?, ?)', (username, password, email, ))
+            cursor.connection.commit()
+            cursor.close()
+            # cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
+            # mysql.connection.commit()
             msg = 'You have successfully registered!'
     elif request.method == 'POST':
         msg = 'Please fill out the form!'
@@ -166,15 +176,22 @@ def change_password():
         if new_password != confirm_password:
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='New passwords do not match!')
         
-        cursor = mysql.connection.cursor()
-        cursor.execute('SELECT * FROM accounts WHERE username = %s AND password = %s', (session['username'], current_password))
+        cursor = sqlite3.connect('wineusers.db').cursor()
+        cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (session['username'], current_password))
         account = cursor.fetchone()
+        # cursor = mysql.connection.cursor()
+        # cursor.execute('SELECT * FROM accounts WHERE username = %s AND password = %s', (session['username'], current_password))
+        # account = cursor.fetchone()
         
         if account:
-            cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
-            mysql.connection.commit()
-            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
+            cursor.execute('UPDATE accounts SET password = ? WHERE username = ?', (new_password, session['username']))
+            cursor.connection.commit()
+            cursor.close()
+            # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
+            # mysql.connection.commit()
+            # return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
         else:
+            cursor.close()
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
     else:
         return redirect(url_for('login'))
