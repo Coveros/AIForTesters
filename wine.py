@@ -189,7 +189,7 @@ def change_password():
             cursor.close()
             # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
             # mysql.connection.commit()
-            # return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
+            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
         else:
             cursor.close()
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
