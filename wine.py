@@ -15,6 +15,7 @@ import sqlite3
 import pickle
 import signal
 import re
+from user_activity_logger import activity_logger
 
 # Create a signal handler to shut down the server gracefully on shutdown
 def shutdown(signal_number, frame):
@@ -68,11 +69,19 @@ def login():
                 session['id'] = account[0]
                 session['username'] = account[1]
                 session['email'] = account[3]
+                
+                # Log successful login
+                activity_logger.log_login_attempt(username, success=True)
+                
                 msg = 'Logged in successfully!'
                 return render_template('wine.html', prediction_text = msg)
             else:
+                # Log failed login attempt
+                activity_logger.log_login_attempt(username, success=False, details={'reason': 'invalid_credentials'})
                 msg = 'Incorrect username/password!'
         else:
+            # Log database connection error
+            activity_logger.log_login_attempt(username, success=False, details={'reason': 'database_error'})
             msg = 'Database connection error!'
 
     return render_template('login.html', login_text='Incorrect username/password!')
@@ -80,6 +89,10 @@ def login():
 # logout removes the user's session data and redirects them to the login page
 @app.route("/logout")
 def logout():
+    # Log logout before clearing session
+    username = session.get('username')
+    activity_logger.log_logout(username=username)
+    
     session.pop('loggedin', None)
     session.pop('id', None)
     session.pop('username', None)
@@ -90,6 +103,8 @@ def logout():
 @app.route("/profile")
 def profile():
     if 'username' in session:
+        # Log profile access
+        activity_logger.log_profile_access()
         return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']))
     else:
         return render_template('login.html')
@@ -109,12 +124,16 @@ def register():
         # cursor.execute('SELECT * FROM accounts WHERE username = % s', (username, ))
         # account = cursor.fetchone()
         if account:
+            activity_logger.log_registration(username, success=False, details={'reason': 'username_exists'})
             msg = 'Account already exists!'
         elif not re.match(r'[^@]+@[^@]+\.[^@]+', email):
+            activity_logger.log_registration(username, success=False, details={'reason': 'invalid_email'})
             msg = 'Invalid email address!'
         elif not re.match(r'[A-Za-z0-9]+', username):
+            activity_logger.log_registration(username, success=False, details={'reason': 'invalid_username'})
             msg = 'Username must contain only characters and numbers!'
         elif not username or not password or not email:
+            activity_logger.log_registration(username, success=False, details={'reason': 'incomplete_form'})
             msg = 'Please fill out the form!'
         else:
             cursor.execute('INSERT INTO accounts VALUES (NULL, ?, ?, ?)', (username, password, email, ))
@@ -122,8 +141,10 @@ def register():
             cursor.close()
             # cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
             # mysql.connection.commit()
+            activity_logger.log_registration(username, success=True)
             msg = 'You have successfully registered!'
     elif request.method == 'POST':
+        activity_logger.log_registration('', success=False, details={'reason': 'incomplete_form'})
         msg = 'Please fill out the form!'
     return render_template('register.html', register_text=msg)
 
@@ -136,6 +157,8 @@ def about():
 @app.route("/contact", methods=['POST', 'GET'])
 def contact():
     if request.method == 'POST':
+        # Log contact form submission
+        activity_logger.log_contact_form()
         return render_template('contact.html', contact_text='Your meessage has been sent!')
     else:
         return render_template('contact.html', contact_text='')
@@ -163,6 +186,24 @@ def predict():
         prediction = model.predict([[alcohol, malic_acid, ash, alcalinity_of_ash, magnesium, total_phenols, flavanoids, nonflavanoid_phenols, proanthocyanins, color_intensity, hue, od280_od315_of_diluted_wines, proline]])
         prediction = prediction[0]
 
+        # Log wine classification with input data and prediction
+        wine_data = {
+            'alcohol': alcohol,
+            'malic_acid': malic_acid,
+            'ash': ash,
+            'alcalinity_of_ash': alcalinity_of_ash,
+            'magnesium': magnesium,
+            'total_phenols': total_phenols,
+            'flavanoids': flavanoids,
+            'nonflavanoid_phenols': nonflavanoid_phenols,
+            'proanthocyanins': proanthocyanins,
+            'color_intensity': color_intensity,
+            'hue': hue,
+            'od280_od315_of_diluted_wines': od280_od315_of_diluted_wines,
+            'proline': proline
+        }
+        activity_logger.log_wine_classification(wine_data, int(prediction))
+
         return render_template('wine.html', prediction_text='The wine type is variety #{}'.format(prediction))
 
 # change_password allows users to change their password if they are logged in
@@ -174,6 +215,7 @@ def change_password():
         confirm_password = request.form['confirm_password']
         
         if new_password != confirm_password:
+            activity_logger.log_password_change(success=False, details={'reason': 'password_mismatch'})
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='New passwords do not match!')
         
         cursor = sqlite3.connect('wineusers.db').cursor()
@@ -189,9 +231,11 @@ def change_password():
             cursor.close()
             # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
             # mysql.connection.commit()
+            activity_logger.log_password_change(success=True)
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
         else:
             cursor.close()
+            activity_logger.log_password_change(success=False, details={'reason': 'incorrect_current_password'})
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
     else:
         return redirect(url_for('login'))
