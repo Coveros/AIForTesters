@@ -15,6 +15,7 @@ import sqlite3
 import pickle
 import signal
 import re
+from datetime import datetime
 
 # Create a signal handler to shut down the server gracefully on shutdown
 def shutdown(signal_number, frame):
@@ -38,6 +39,37 @@ app.secret_key = 'your_secret_key'
 
 # Turn debugging mode off for production
 app.debug = True 
+
+# Initialize activity_log table if it doesn't exist
+def init_activity_log():
+    conn = sqlite3.connect('wineusers.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            activity_type TEXT NOT NULL,
+            username TEXT,
+            details TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Log an activity to the database
+def log_activity(activity_type, username=None, details=None):
+    conn = sqlite3.connect('wineusers.db')
+    cursor = conn.cursor()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute(
+        'INSERT INTO activity_log (timestamp, activity_type, username, details) VALUES (?, ?, ?, ?)',
+        (timestamp, activity_type, username, details)
+    )
+    conn.commit()
+    conn.close()
+
+# Initialize the activity log table on startup
+init_activity_log()
 
 # create a routine to notify test scipts that the server is up and running
 @app.route("/health")
@@ -68,9 +100,11 @@ def login():
                 session['id'] = account[0]
                 session['username'] = account[1]
                 session['email'] = account[3]
+                log_activity('login', username, 'Successful login')
                 msg = 'Logged in successfully!'
                 return render_template('wine.html', prediction_text = msg)
             else:
+                log_activity('login', username, 'Failed login attempt')
                 msg = 'Incorrect username/password!'
         else:
             msg = 'Database connection error!'
@@ -122,6 +156,7 @@ def register():
             cursor.close()
             # cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
             # mysql.connection.commit()
+            log_activity('registration', username, 'New user registered with email: ' + email)
             msg = 'You have successfully registered!'
     elif request.method == 'POST':
         msg = 'Please fill out the form!'
@@ -163,6 +198,9 @@ def predict():
         prediction = model.predict([[alcohol, malic_acid, ash, alcalinity_of_ash, magnesium, total_phenols, flavanoids, nonflavanoid_phenols, proanthocyanins, color_intensity, hue, od280_od315_of_diluted_wines, proline]])
         prediction = prediction[0]
 
+        username = session.get('username', 'anonymous')
+        log_activity('prediction', username, 'Predicted wine variety #{}'.format(prediction))
+
         return render_template('wine.html', prediction_text='The wine type is variety #{}'.format(prediction))
 
 # change_password allows users to change their password if they are logged in
@@ -193,6 +231,20 @@ def change_password():
         else:
             cursor.close()
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
+    else:
+        return redirect(url_for('login'))
+
+# admin displays the activity log for administrators
+@app.route("/admin")
+def admin():
+    if 'username' in session:
+        conn = sqlite3.connect('wineusers.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM activity_log ORDER BY timestamp DESC')
+        activities = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return render_template('admin.html', activities=activities)
     else:
         return redirect(url_for('login'))
 
