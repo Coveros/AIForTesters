@@ -15,6 +15,7 @@ import sqlite3
 import pickle
 import signal
 import re
+from datetime import datetime
 
 # Create a signal handler to shut down the server gracefully on shutdown
 def shutdown(signal_number, frame):
@@ -28,6 +29,8 @@ app = Flask(__name__)
 model = pickle.load(open('model.pkl', 'rb'))
 app.secret_key = 'your_secret_key'
 
+DB_FILE = 'wineusers.db'
+
 # # Configure MySQL service
 # app.config['MYSQL_HOST'] = 'localhost'
 # app.config['MYSQL_USER'] = 'root'
@@ -38,6 +41,41 @@ app.secret_key = 'your_secret_key'
 
 # Turn debugging mode off for production
 app.debug = True 
+
+# initialize the database and create the activity_log table if it doesn't exist
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        action TEXT,
+        timestamp TEXT
+    )''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# log_activity records a user action into the activity_log table
+def log_activity(user_id, username, action):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('INSERT INTO activity_log (user_id, username, action, timestamp) VALUES (?, ?, ?, ?)',
+                   (user_id, username, action, timestamp))
+    conn.commit()
+    conn.close()
+
+# get_user_activity_logs retrieves all activity log entries for a given user
+def get_user_activity_logs(user_id):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('SELECT action, timestamp FROM activity_log WHERE user_id = ? ORDER BY id DESC', (user_id,))
+    logs = cursor.fetchall()
+    conn.close()
+    return logs
 
 # create a routine to notify test scipts that the server is up and running
 @app.route("/health")
@@ -58,7 +96,7 @@ def login():
     if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
         username = request.form['username']
         password = request.form['password']
-        cursor = sqlite3.connect('wineusers.db').cursor()
+        cursor = sqlite3.connect(DB_FILE).cursor()
         if cursor:
             cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (username, password))
             account = cursor.fetchone()
@@ -68,6 +106,7 @@ def login():
                 session['id'] = account[0]
                 session['username'] = account[1]
                 session['email'] = account[3]
+                log_activity(account[0], account[1], 'login')
                 msg = 'Logged in successfully!'
                 return render_template('wine.html', prediction_text = msg)
             else:
@@ -80,6 +119,8 @@ def login():
 # logout removes the user's session data and redirects them to the login page
 @app.route("/logout")
 def logout():
+    if 'id' in session and 'username' in session:
+        log_activity(session['id'], session['username'], 'logout')
     session.pop('loggedin', None)
     session.pop('id', None)
     session.pop('username', None)
@@ -90,7 +131,7 @@ def logout():
 @app.route("/profile")
 def profile():
     if 'username' in session:
-        return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']))
+        return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), activity_logs=get_user_activity_logs(session['id']))
     else:
         return render_template('login.html')
 
@@ -102,7 +143,7 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
-        cursor = sqlite3.connect('wineusers.db').cursor()
+        cursor = sqlite3.connect(DB_FILE).cursor()
         cursor.execute('SELECT * FROM accounts WHERE username = ?', (username, ))
         account = cursor.fetchone()
         # cursor = mysql.connection.cursor()
@@ -119,9 +160,14 @@ def register():
         else:
             cursor.execute('INSERT INTO accounts VALUES (NULL, ?, ?, ?)', (username, password, email, ))
             cursor.connection.commit()
+            # retrieve the new account id for logging
+            cursor.execute('SELECT id FROM accounts WHERE username = ?', (username,))
+            new_account = cursor.fetchone()
             cursor.close()
             # cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
             # mysql.connection.commit()
+            if new_account:
+                log_activity(new_account[0], username, 'register')
             msg = 'You have successfully registered!'
     elif request.method == 'POST':
         msg = 'Please fill out the form!'
@@ -174,9 +220,9 @@ def change_password():
         confirm_password = request.form['confirm_password']
         
         if new_password != confirm_password:
-            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='New passwords do not match!')
+            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='New passwords do not match!', activity_logs=get_user_activity_logs(session['id']))
         
-        cursor = sqlite3.connect('wineusers.db').cursor()
+        cursor = sqlite3.connect(DB_FILE).cursor()
         cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (session['username'], current_password))
         account = cursor.fetchone()
         # cursor = mysql.connection.cursor()
@@ -189,10 +235,11 @@ def change_password():
             cursor.close()
             # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
             # mysql.connection.commit()
-            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
+            log_activity(session['id'], session['username'], 'change_password')
+            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!', activity_logs=get_user_activity_logs(session['id']))
         else:
             cursor.close()
-            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
+            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!', activity_logs=get_user_activity_logs(session['id']))
     else:
         return redirect(url_for('login'))
 
