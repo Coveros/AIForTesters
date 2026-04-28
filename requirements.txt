@@ -1,0 +1,10 @@
+flask
+numpy
+pandas
+scikit-learn
+matplotlib
+jupyterlab
+ipykernel
+pytest
+seleniumbase
+google-genai
