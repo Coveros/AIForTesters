@@ -15,6 +15,8 @@ import sqlite3
 import pickle
 import signal
 import re
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Create a signal handler to shut down the server gracefully on shutdown
 def shutdown(signal_number, frame):
@@ -26,7 +28,7 @@ signal.signal(signal.SIGINT, shutdown)
 # Load the model from the pickle file
 app = Flask(__name__)
 model = pickle.load(open('model.pkl', 'rb'))
-app.secret_key = 'your_secret_key'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(32))
 
 # # Configure MySQL service
 # app.config['MYSQL_HOST'] = 'localhost'
@@ -37,7 +39,7 @@ app.secret_key = 'your_secret_key'
 # mysql = MySQL(app)
 
 # Turn debugging mode off for production
-app.debug = True 
+app.debug = False
 
 # create a routine to notify test scipts that the server is up and running
 @app.route("/health")
@@ -60,10 +62,10 @@ def login():
         password = request.form['password']
         cursor = sqlite3.connect('wineusers.db').cursor()
         if cursor:
-            cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (username, password))
+            cursor.execute('SELECT * FROM accounts WHERE username = ?', (username,))
             account = cursor.fetchone()
             cursor.close()
-            if account:
+            if account and check_password_hash(account[2], password):
                 session['loggedin'] = True
                 session['id'] = account[0]
                 session['username'] = account[1]
@@ -101,13 +103,11 @@ def register():
     if request.method == 'POST' and 'username' in request.form and 'password' in request.form and 'email' in request.form :
         username = request.form['username']
         password = request.form['password']
+        confirmpw = request.form.get('confirmpw', '')
         email = request.form['email']
         cursor = sqlite3.connect('wineusers.db').cursor()
         cursor.execute('SELECT * FROM accounts WHERE username = ?', (username, ))
         account = cursor.fetchone()
-        # cursor = mysql.connection.cursor()
-        # cursor.execute('SELECT * FROM accounts WHERE username = % s', (username, ))
-        # account = cursor.fetchone()
         if account:
             msg = 'Account already exists!'
         elif not re.match(r'[^@]+@[^@]+\.[^@]+', email):
@@ -116,12 +116,13 @@ def register():
             msg = 'Username must contain only characters and numbers!'
         elif not username or not password or not email:
             msg = 'Please fill out the form!'
+        elif password != confirmpw:
+            msg = 'Passwords do not match!'
         else:
-            cursor.execute('INSERT INTO accounts VALUES (NULL, ?, ?, ?)', (username, password, email, ))
+            hashed_password = generate_password_hash(password)
+            cursor.execute('INSERT INTO accounts VALUES (NULL, ?, ?, ?)', (username, hashed_password, email, ))
             cursor.connection.commit()
             cursor.close()
-            # cursor.execute('INSERT INTO accounts VALUES (NULL, % s, % s, % s)', (username, password, email, ))
-            # mysql.connection.commit()
             msg = 'You have successfully registered!'
     elif request.method == 'POST':
         msg = 'Please fill out the form!'
@@ -143,6 +144,8 @@ def contact():
 # predict uses the machine learning model to predict the wine type based on the user's input
 @app.route("/predict", methods=['GET', 'POST'])
 def predict():
+    if 'username' not in session:
+        return redirect(url_for('login'))
     if request.method == 'GET':
         return render_template('wine.html')
     else:
@@ -177,14 +180,12 @@ def change_password():
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='New passwords do not match!')
         
         cursor = sqlite3.connect('wineusers.db').cursor()
-        cursor.execute('SELECT * FROM accounts WHERE username = ? AND password = ?', (session['username'], current_password))
+        cursor.execute('SELECT * FROM accounts WHERE username = ?', (session['username'],))
         account = cursor.fetchone()
-        # cursor = mysql.connection.cursor()
-        # cursor.execute('SELECT * FROM accounts WHERE username = %s AND password = %s', (session['username'], current_password))
-        # account = cursor.fetchone()
         
-        if account:
-            cursor.execute('UPDATE accounts SET password = ? WHERE username = ?', (new_password, session['username']))
+        if account and check_password_hash(account[2], current_password):
+            hashed_new_password = generate_password_hash(new_password)
+            cursor.execute('UPDATE accounts SET password = ? WHERE username = ?', (hashed_new_password, session['username']))
             cursor.connection.commit()
             cursor.close()
             # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
@@ -192,7 +193,7 @@ def change_password():
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
         else:
             cursor.close()
-            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), current_password=current_password, profile_text='Current password is incorrect!')
+            return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Current password is incorrect!')
     else:
         return redirect(url_for('login'))
 
