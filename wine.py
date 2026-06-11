@@ -28,6 +28,8 @@ signal.signal(signal.SIGINT, shutdown)
 # Load the model from the pickle file
 app = Flask(__name__)
 model = pickle.load(open('model.pkl', 'rb'))
+# Set FLASK_SECRET_KEY env var in production. The os.urandom fallback generates a new
+# key on every restart (invalidating all sessions) and is only suitable for development.
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(32))
 
 # # Configure MySQL service
@@ -64,7 +66,9 @@ def login():
         if cursor:
             cursor.execute('SELECT * FROM accounts WHERE username = ?', (username,))
             account = cursor.fetchone()
+            conn = cursor.connection
             cursor.close()
+            conn.close()
             if account and check_password_hash(account[2], password):
                 session['loggedin'] = True
                 session['id'] = account[0]
@@ -187,12 +191,16 @@ def change_password():
             hashed_new_password = generate_password_hash(new_password)
             cursor.execute('UPDATE accounts SET password = ? WHERE username = ?', (hashed_new_password, session['username']))
             cursor.connection.commit()
+            conn = cursor.connection
             cursor.close()
+            conn.close()
             # cursor.execute('UPDATE accounts SET password = %s WHERE username = %s', (new_password, session['username']))
             # mysql.connection.commit()
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Password changed successfully!')
         else:
+            conn = cursor.connection
             cursor.close()
+            conn.close()
             return render_template('profile.html', username_text='Username: {}'.format(session['username']), email_text='Email: {}'.format(session['email']), profile_text='Current password is incorrect!')
     else:
         return redirect(url_for('login'))
