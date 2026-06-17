@@ -1,0 +1,42 @@
+# Shared settings for the defect prediction tutorial
+
+data:
+  train_path: data/raw/jm1.csv
+  val_path: data/raw/cm1.csv
+  label_column: defects
+  preprocessing: nasa
+  split_mode: external  # used by the neural network (Step 4): train JM1, test CM1
+  base_features:
+    - loc
+    - d
+    - locCodeAndComment
+    - v(g)
+    - uniq_Opnd
+  variant_feature: i  # Step 3 finds the best swap; then set to total_Opnd for Step 4
+  normalize: true
+
+model:
+  input_dim: 6
+  hidden_dims: [7680, 7680, 3840, 1024]
+  dropout: 0.3
+  num_classes: 1
+
+training:
+  epochs: 20
+  batch_size: 64
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  val_split: 0.2  # used by Steps 1-3: 80/20 holdout on JM1
+  seed: 42
+  num_workers: 0
+  checkpoint_dir: checkpoints
+  save_best: true
+
+hardware:
+  device: auto
+
+boosting:
+  n_estimators: 500
+  learning_rate: 0.05
+  max_depth: 6
+  early_stopping_rounds: 50

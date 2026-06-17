@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ML artifacts
+checkpoints/
+runs/
+logs/
+*.pt
+*.pth
+wandb/
+
+# Data (keep structure, ignore large/local datasets)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
