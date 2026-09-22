@@ -16,6 +16,8 @@ The setup will automatically:
 - Install a Jupyter kernel named `Python (AIForTesters)`
 - Forward app and notebook ports
 
+If you already had a Codespace open before this setup changed, rebuild the container so the browser packages are refreshed.
+
 ## Start The Flask App
 
 ```bash
@@ -29,7 +31,7 @@ Open the forwarded port `5000` when prompted.
 Run tests in headless mode (recommended in Codespaces):
 
 ```bash
-pytest tests --headless
+python -m pytest tests/ -v --browser=chrome --headless --no-sandbox --disable-gpu
 ```
 
 ## Use Jupyter Notebooks
