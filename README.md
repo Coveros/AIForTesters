@@ -14,9 +14,12 @@ The setup will automatically:
 
 - Install Python dependencies from `requirements.txt`
 - Install a Jupyter kernel named `Python (AIForTesters)`
+- Install R, IRkernel, and Modificare's core R dependencies
+- Clone Modificare into `modificare/` if it is not already present
+- Install a Jupyter kernel named `R (Modificare)`
 - Forward app and notebook ports
 
-If you already had a Codespace open before this setup changed, rebuild the container so the browser packages are refreshed.
+If you already had a Codespace open before this setup changed, rebuild the container to install the updated dependencies.
 
 ## Start The Flask App
 
@@ -41,6 +44,7 @@ Open any `.ipynb` file in VS Code.
 Select kernel:
 
 - `Python (AIForTesters)`
+- `R (Modificare)` for `test_suite_reduction.ipynb`
 
 If you want to run Jupyter in the terminal:
 
