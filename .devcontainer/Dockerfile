@@ -22,5 +22,17 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        r-base \
+        r-cran-irkernel \
+        r-cran-plyr \
+        r-cran-snowfall \
+        r-cran-snow \
+        r-cran-domc \
+        r-cran-gtools \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER=/usr/bin/chromedriver
